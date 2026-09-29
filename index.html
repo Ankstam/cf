@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Cloudflare 优选 IP 提取面板</title>
+  <title>Cloudflare 动态优选 IP 提取器</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background: #0f172a; color: #f8fafc; padding: 16px; display: flex; justify-content: center; }
@@ -16,95 +16,99 @@
     label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 6px; }
     select, textarea { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #fff; padding: 10px; font-size: 0.95rem; outline: none; }
     select:focus, textarea:focus { border-color: #f6821f; }
-    textarea { height: 240px; font-family: monospace; resize: vertical; line-height: 1.5; font-size: 0.85rem; }
+    textarea { height: 260px; font-family: monospace; resize: vertical; line-height: 1.5; font-size: 0.85rem; }
     .bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
     .badge { padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; background: #334155; color: #38bdf8; }
-    button { width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; font-size: 0.95rem; background: #f6821f; color: white; }
+    .btn-group { display: flex; gap: 8px; margin-top: 10px; }
+    button { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; font-size: 0.95rem; transition: opacity 0.2s; }
+    .btn-primary { background: #f6821f; color: white; }
+    .btn-secondary { background: #334155; color: #f8fafc; }
     button:active { opacity: 0.85; }
-    .note { margin-top: 14px; font-size: 0.8rem; color: #64748b; line-height: 1.5; }
-    .note strong { color: #cbd5e1; }
+    .tips { margin-top: 14px; font-size: 0.8rem; color: #64748b; line-height: 1.5; }
+    .tips strong { color: #cbd5e1; }
   </style>
 </head>
 <body>
 
 <div class="container">
   <header>
-    <h1>Cloudflare 优选 IP 提取器</h1>
-    <p class="sub">过滤无效网段 · 仅保留活跃可用节点</p>
+    <h1>Cloudflare 动态优选 IP 提取器</h1>
+    <p class="sub">边缘实时抓取清洗 · 拒绝失效死数据</p>
   </header>
 
   <div class="card">
     <div class="field">
-      <label>筛选目标机房区域：</label>
-      <select id="regionSelect" onchange="renderIPs()">
-        <option value="JP">🇯🇵 日本地区 (NRT / HND / KIX)</option>
-        <option value="HK">🇭🇰 中国香港 (HKG)</option>
-        <option value="SG">🇸🇬 新加坡 (SIN)</option>
-        <option value="ALL">🌏 亚太全量精选池 (日本+香港+新加坡)</option>
+      <label>选择筛选机房区域：</label>
+      <select id="regionSelect" onchange="fetchFreshIPs()">
+        <option value="JP">🇯🇵 日本节点 (NRT / HND / KIX)</option>
+        <option value="HK">🇭🇰 中国香港节点 (HKG)</option>
+        <option value="SG">🇸🇬 新加坡节点 (SIN)</option>
+        <option value="US">🇺🇸 美国西岸 (SJC / LAX)</option>
       </select>
     </div>
 
     <div class="field">
       <div class="bar">
-        <label>可用 IPv4 列表：</label>
-        <span class="badge" id="countBadge">共 0 个节点</span>
+        <label>实时解析可用 IP 列表：</label>
+        <span class="badge" id="countBadge">正在请求边缘网关...</span>
       </div>
-      <textarea id="ipArea" readonly></textarea>
+      <textarea id="ipArea" readonly placeholder="正在从云端动态接口拉取最新存活节点..."></textarea>
     </div>
 
-    <button onclick="copyIPs()">一键复制到剪贴板</button>
+    <div class="btn-group">
+      <button class="btn-secondary" onclick="fetchFreshIPs()">刷新数据源</button>
+      <button class="btn-primary" onclick="copyIPs()">一键复制并测速</button>
+    </div>
 
-    <div class="note">
-      <strong>操作提示：</strong>复制后切换回测速 App，在“自定义 Cloudflare Ipv4 列表”弹窗中点击“重置”清空原广播段，直接粘贴即可运行测试。
+    <div class="tips">
+      <strong>自动化链路说明：</strong><br>
+      1. 点击上方“一键复制”获取已排除死段的动态 IP 列表。<br>
+      2. 切换到手机测速软件，进入“自定义 Cloudflare Ipv4 列表[span_4](start_span)”[span_4](end_span)。<br>
+      3. 点击“重置”清空原广播段，粘贴此列表后点击确定[span_5](start_span)[span_5](end_span)。<br>
+      4. 切回“运行测试”，由手机执行真实的网络测速与带宽检验[span_6](start_span)[span_6](end_span)。
     </div>
   </div>
 </div>
 
 <script>
-  // 仅提取各机房经过连通握手的高纯度存活节点，排除无响应的死 IP
-  const activePool = {
-    JP: [
-      "104.16.24.1", "104.16.25.1", "104.16.26.1", "104.16.27.1",
-      "104.17.32.1", "104.17.33.1", "104.17.34.1", "104.17.35.1",
-      "104.18.40.1", "104.18.41.1", "104.18.42.1", "104.18.43.1",
-      "172.67.18.1", "172.67.19.1", "172.67.20.1", "172.67.21.1",
-      "162.159.36.1", "162.159.37.1", "162.159.38.1", "162.159.39.1",
-      "104.20.48.1", "104.20.49.1", "104.22.60.1", "104.22.61.1"
-    ],
-    HK: [
-      "104.16.12.1", "104.16.13.1", "104.16.14.1", "104.16.15.1",
-      "104.17.20.1", "104.17.21.1", "104.17.22.1", "104.17.23.1",
-      "104.19.88.1", "104.19.89.1", "104.19.90.1", "104.19.91.1",
-      "172.67.45.1", "172.67.46.1", "172.67.47.1", "172.67.48.1"
-    ],
-    SG: [
-      "104.18.35.1", "104.18.36.1", "104.18.37.1", "104.18.38.1",
-      "104.19.40.1", "104.19.41.1", "104.19.42.1", "104.19.43.1",
-      "172.67.72.1", "172.67.73.1", "172.67.74.1", "172.67.75.1"
-    ]
-  };
+  async function fetchFreshIPs() {
+    const region = document.getElementById("regionSelect").value;
+    const badge = document.getElementById("countBadge");
+    const textarea = document.getElementById("ipArea");
 
-  function renderIPs() {
-    const reg = document.getElementById("regionSelect").value;
-    let list = [];
-    if (reg === "ALL") {
-      list = [...activePool.JP, ...activePool.HK, ...activePool.SG];
-    } else {
-      list = activePool[reg] || [];
+    badge.innerText = "云端清洗计算中...";
+    textarea.value = "正在从动态源同步最新可用优选 IP...";
+
+    try {
+      // 动态调用部署在 Cloudflare Pages 的边缘函数接口
+      const response = await fetch(`/api/get-ips?region=${region}`);
+      const data = await response.json();
+
+      if (data.ips && data.ips.length > 0) {
+        textarea.value = data.ips.join("\n");
+        badge.innerText = `已筛选 ${data.ips.length} 个最新可用 IP`;
+      } else {
+        textarea.value = "当前地区暂未获取到存活数据，请尝试切换区域或稍后刷新。";
+        badge.innerText = "无匹配结果";
+      }
+    } catch (err) {
+      textarea.value = "请求失败，请检查网络或部署状态: " + err.message;
+      badge.innerText = "请求异常";
     }
-    document.getElementById("ipArea").value = list.join("\n");
-    document.getElementById("countBadge").innerText = `共 ${list.length} 个节点`;
   }
 
   function copyIPs() {
     const textarea = document.getElementById("ipArea");
+    if (!textarea.value || textarea.value.startsWith("正在")) return;
+
     textarea.select();
     navigator.clipboard.writeText(textarea.value).then(() => {
-      alert(`已复制 ${textarea.value.split('\n').length} 个优选 IP，请前往测速 App 粘贴使用！`);
+      alert(`已复制 ${textarea.value.split('\n').length} 个最新动态优选 IP！请前往测速软件粘贴测试。`);
     });
   }
 
-  renderIPs();
+  // 页面进入时自启动动态请求
+  fetchFreshIPs();
 </script>
 </body>
 </html>
